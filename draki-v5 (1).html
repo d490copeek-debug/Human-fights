@@ -1,0 +1,2042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Драки v5 — Безумный ринг</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root { color-scheme: dark; }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100dvh;
+      background-color: #090b10;
+      color: #f8fafc;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
+
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+    .game-btn {
+      touch-action: none;
+      transition: transform 0.07s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    .game-btn:active, .game-btn.is-pressed { transform: translateY(2px) scale(0.96); }
+
+    @media (pointer: coarse) {
+      .game-btn { min-height: 46px; }
+    }
+
+    /* Портрет на телефоне: арена по ширине, панель управления под ней */
+    @media (orientation: portrait) and (max-width: 640px) {
+      body { justify-content: flex-start; padding: 6px; }
+      header p { display: none; }
+      .arena-frame { height: 46vh !important; min-height: 230px; }
+      .touch-controls-panel { position: sticky; bottom: 0; z-index: 25; padding: 6px; }
+      .touch-controls-panel .game-btn { padding-top: 12px; padding-bottom: 12px; }
+    }
+
+    /* Горизонталь: арена сверху на всю ширину, панель кнопок снизу в один ряд по краям */
+    @media (orientation: landscape) and (max-height: 540px) {
+      body { height: 100dvh; min-height: 0; padding: 4px; justify-content: space-between; }
+      header { display: none !important; }
+      main { flex: 1 1 auto; min-height: 0; margin: 0 !important; gap: 4px; }
+      main section { padding: 4px 10px; }
+      #soundLabel, #difficultyWrap { display: none !important; }
+      .arena-frame { flex: 1 1 auto; height: auto !important; min-height: 120px; }
+
+      .touch-controls-panel {
+        position: static !important;
+        inset: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        display: grid !important;
+        grid-template-columns: repeat(4, 60px) 1fr repeat(4, 60px);
+        grid-template-rows: auto;
+        gap: 8px;
+        align-items: center;
+        justify-items: center;
+        padding: 6px 8px !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      .touch-controls-panel > div,
+      .touch-cluster,
+      .touch-cluster > .grid { display: contents !important; }
+      .touch-cluster > div:first-child { display: none !important; }
+      #p2ControlsPanel { display: none !important; }
+
+      .touch-controls-panel .game-btn {
+        width: 60px;
+        height: 60px;
+        padding: 0 !important;
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-size: 11px;
+        line-height: 1.05;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+        background-color: rgba(15, 23, 42, 0.85) !important;
+        grid-row: 1;
+      }
+      [data-p1="left"]    { grid-column: 1; }
+      [data-p1="right"]   { grid-column: 2; }
+      [data-p1="block"]   { grid-column: 3; }
+      [data-p1="jump"]    { grid-column: 4; }
+      [data-p1="dash"]    { grid-column: 6; }
+      [data-p1="punch"]   { grid-column: 7; }
+      [data-p1="kick"]    { grid-column: 8; }
+      [data-p1="special"] { grid-column: 9; width: 60px !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col items-center justify-between min-h-dvh p-2 sm:p-3 lg:p-4">
+  <header class="w-full max-w-6xl flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 rounded-2xl px-3 py-2 sm:px-4 shadow-lg z-20">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-300 font-black text-sm shadow-inner">v5</div>
+      <div>
+        <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white leading-tight">Драки версия 5</h1>
+        <p class="text-[11px] text-slate-400 hidden sm:block">Арена бойцов и колясочников • Прыжки, дэш, блок, комбо и смена раундов</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <div class="inline-flex rounded-xl bg-slate-950 p-0.5 border border-slate-800" role="group" aria-label="Режим игры">
+        <button id="modeAiBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-extrabold bg-amber-400 text-slate-950 transition cursor-pointer">1 Игрок (ИИ)</button>
+        <button id="mode2pBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition cursor-pointer">2 Игрока</button>
+      </div>
+
+      <label id="difficultyWrap" class="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs">
+        <span class="text-slate-400 hidden md:inline">ИИ:</span>
+        <select id="difficultySelect" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer">
+          <option value="easy" class="bg-slate-900">Лёгкий</option>
+          <option value="normal" selected class="bg-slate-900">Средний</option>
+          <option value="hard" class="bg-slate-900">Жёсткий</option>
+        </select>
+      </label>
+
+      <button id="fullscreenBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-100 transition cursor-pointer" title="На весь экран">⛶</button>
+
+      <button id="soundBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-100 flex items-center gap-1 transition cursor-pointer" aria-label="Звук">
+        <span id="soundIcon">🔊</span>
+        <span id="soundLabel" class="hidden sm:inline">Звук</span>
+      </button>
+
+      <button id="restartBtn" type="button" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-xs font-extrabold text-white shadow-md shadow-rose-950/50 transition cursor-pointer">↺ Заново</button>
+    </div>
+  </header>
+
+  <main class="w-full max-w-6xl flex-1 flex flex-col justify-center gap-2 my-1.5 sm:my-2 min-h-0">
+    <section class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4 bg-slate-900/80 border border-slate-800 rounded-2xl px-3 py-2 sm:px-4">
+      <div class="min-w-0">
+        <div class="flex items-center justify-between gap-1 text-xs font-bold mb-1">
+          <span class="text-amber-300 flex items-center gap-1.5 truncate">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+            <span id="p1Name" class="truncate">Жёлтый Чемпион</span>
+          </span>
+          <span id="p1HpText" class="text-slate-300 tabular-nums shrink-0">100 HP</span>
+        </div>
+        <div class="h-3.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
+          <div id="p1HpBar" class="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-150" style="width: 100%"></div>
+        </div>
+        <div class="mt-1.5 flex items-center gap-1.5">
+          <div class="h-2 flex-1 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80">
+            <div id="p1EnergyBar" class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-sky-300 transition-all duration-150" style="width: 0%"></div>
+          </div>
+          <span id="p1EnergyBadge" class="text-[10px] font-extrabold text-slate-400 tabular-nums shrink-0">СПЕЦ 0%</span>
+          <button id="switchP1Btn" type="button" class="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-200 transition cursor-pointer shrink-0" title="Сменить своего бойца">🔄 Боец</button>
+        </div>
+      </div>
+
+      <div class="text-center px-2.5 sm:px-4 py-1 rounded-xl bg-slate-950 border border-amber-400/40 shrink-0">
+        <div id="roundDisplay" class="text-xs sm:text-sm font-black text-amber-300 tracking-wide">РАУНД 1</div>
+        <div id="winsDisplay" class="text-[11px] text-slate-400 font-bold tabular-nums mt-0.5">0 : 0</div>
+      </div>
+
+      <div class="min-w-0">
+        <div class="flex items-center justify-between gap-1 text-xs font-bold mb-1">
+          <span id="p2HpText" class="text-slate-300 tabular-nums shrink-0">100 HP</span>
+          <span class="text-rose-400 flex items-center gap-1.5 truncate">
+            <span id="p2Name" class="truncate">Красный Хулиган</span>
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0"></span>
+          </span>
+        </div>
+        <div class="h-3.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 flex justify-end">
+          <div id="p2HpBar" class="h-full rounded-full bg-gradient-to-l from-rose-500 to-orange-400 transition-all duration-150" style="width: 100%"></div>
+        </div>
+        <div class="mt-1.5 flex items-center gap-1.5">
+          <span id="p2EnergyBadge" class="text-[10px] font-extrabold text-slate-400 tabular-nums shrink-0">СПЕЦ 0%</span>
+          <div class="h-2 flex-1 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80 flex justify-end">
+            <div id="p2EnergyBar" class="h-full rounded-full bg-gradient-to-l from-fuchsia-400 to-purple-300 transition-all duration-150" style="width: 0%"></div>
+          </div>
+          <span id="p2RoleTag" class="px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/70 text-[10px] font-bold text-rose-300 shrink-0">R1</span>
+        </div>
+      </div>
+    </section>
+
+    <div id="arenaBox" class="arena-frame relative w-full h-[270px] sm:h-[370px] md:h-[420px] rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-900">
+      <canvas id="gameCanvas"></canvas>
+
+      <div id="bannerToast" class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-slate-950/90 border border-amber-400/50 text-amber-300 text-xs sm:text-sm font-black tracking-wide shadow-xl opacity-0 transition-opacity duration-200 whitespace-nowrap">РАУНД 1 — БОЙ!</div>
+
+      <div id="matchOverlay" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 text-center z-20">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl">
+          <div class="inline-block px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-bold mb-2">МАТЧ ЗАВЕРШЁН</div>
+          <h2 id="winnerTitle" class="text-2xl sm:text-3xl font-black text-white mb-2">Победа!</h2>
+          <p id="winnerSubtitle" class="text-sm text-slate-300 mb-5">Счёт по раундам: 2 : 0.</p>
+          <button id="playAgainBtn" type="button" class="w-full py-3 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm sm:text-base shadow-lg shadow-amber-500/20 transition cursor-pointer">Начать новый матч</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="touch-controls-panel w-full max-w-6xl bg-slate-900/90 border border-slate-800 rounded-2xl p-2 sm:p-3 shadow-lg">
+    <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-2.5">
+      <div class="touch-cluster bg-slate-950/75 border border-slate-800/90 rounded-xl p-2 flex flex-col gap-1.5">
+        <div class="flex items-center justify-between px-1">
+          <span class="text-[11px] font-extrabold text-amber-300">Боец 1</span>
+          <span class="text-[10px] text-slate-400 hidden sm:inline">A/D • W прыжок • S блок • Q дэш • F рука • G нога/таран • R спец</span>
+        </div>
+        <div class="grid grid-cols-7 gap-1">
+          <button type="button" data-p1="left" class="game-btn py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-black text-slate-100 cursor-pointer">◀</button>
+          <button type="button" data-p1="right" class="game-btn py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-black text-slate-100 cursor-pointer">▶</button>
+          <button type="button" data-p1="jump" class="game-btn py-2.5 rounded-xl bg-sky-900/60 hover:bg-sky-800/70 border border-sky-700/40 text-[11px] font-extrabold text-sky-200 cursor-pointer">Прыг</button>
+          <button type="button" data-p1="block" class="game-btn py-2.5 rounded-xl bg-indigo-900/60 hover:bg-indigo-800/70 border border-indigo-700/40 text-[11px] font-extrabold text-indigo-200 cursor-pointer">Блок</button>
+          <button type="button" data-p1="dash" class="game-btn py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/70 border border-emerald-700/40 text-[11px] font-extrabold text-emerald-200 cursor-pointer">Дэш</button>
+          <button type="button" data-p1="punch" class="game-btn py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-[11px] font-extrabold text-amber-200 cursor-pointer">Рука</button>
+          <button id="p1KickBtn" type="button" data-p1="kick" class="game-btn py-2.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-400/40 text-[11px] font-extrabold text-orange-200 cursor-pointer">Нога</button>
+        </div>
+        <button id="p1SpecialBtn" type="button" data-p1="special" class="game-btn w-full py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-[11px] font-black tracking-wide text-cyan-300 disabled:opacity-40 cursor-pointer">⚡ СУПЕР</button>
+      </div>
+
+      <div id="p2ControlsPanel" class="touch-cluster bg-slate-950/75 border border-slate-800/90 rounded-xl p-2 flex flex-col gap-1.5">
+        <div class="flex items-center justify-between px-1">
+          <span id="p2CtrlTitle" class="text-[11px] font-extrabold text-rose-400">Боец 2</span>
+          <span id="p2CtrlHint" class="text-[10px] text-slate-400 hidden sm:inline">←/→ • ↑ прыжок • ↓ блок • Shift дэш • K рука • L нога • / спец</span>
+        </div>
+        <div class="grid grid-cols-7 gap-1">
+          <button type="button" data-p2="left" class="game-btn py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-black text-slate-100 cursor-pointer">◀</button>
+          <button type="button" data-p2="right" class="game-btn py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-black text-slate-100 cursor-pointer">▶</button>
+          <button type="button" data-p2="jump" class="game-btn py-2.5 rounded-xl bg-sky-900/60 hover:bg-sky-800/70 border border-sky-700/40 text-[11px] font-extrabold text-sky-200 cursor-pointer">Прыг</button>
+          <button type="button" data-p2="block" class="game-btn py-2.5 rounded-xl bg-indigo-900/60 hover:bg-indigo-800/70 border border-indigo-700/40 text-[11px] font-extrabold text-indigo-200 cursor-pointer">Блок</button>
+          <button type="button" data-p2="dash" class="game-btn py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/70 border border-emerald-700/40 text-[11px] font-extrabold text-emerald-200 cursor-pointer">Дэш</button>
+          <button type="button" data-p2="punch" class="game-btn py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 text-[11px] font-extrabold text-rose-200 cursor-pointer">Рука</button>
+          <button id="p2KickBtn" type="button" data-p2="kick" class="game-btn py-2.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 border border-pink-400/40 text-[11px] font-extrabold text-pink-200 cursor-pointer">Нога</button>
+        </div>
+        <button id="p2SpecialBtn" type="button" data-p2="special" class="game-btn w-full py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-[11px] font-black tracking-wide text-fuchsia-300 disabled:opacity-40 cursor-pointer">⚡ СУПЕР</button>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // ==========================================
+      // 1. ЗВУК: эффекты, толпа и музыка (Web Audio API)
+      // ==========================================
+      class SoundSystem {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+          this.ambGain = null;
+          this.musicTimer = null;
+          this.step = 0;
+          this.nextT = 0;
+        }
+
+        ensure() {
+          if (!this.enabled) return null;
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (!AudioCtx) return null;
+              this.ctx = new AudioCtx();
+              this.startAmbience();
+              this.startMusic();
+            }
+            if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+            return this.ctx;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        toggle() {
+          this.enabled = !this.enabled;
+          if (this.enabled) this.ensure();
+          if (this.ambGain) this.ambGain.gain.value = this.enabled ? 0.05 : 0;
+          return this.enabled;
+        }
+
+        // Звуковой «фон»: приглушённый гул толпы
+        startAmbience() {
+          const ctx = this.ctx;
+          const len = ctx.sampleRate * 3;
+          const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          let last = 0;
+          for (let i = 0; i < len; i++) {
+            last = last * 0.96 + (Math.random() * 2 - 1) * 0.12;
+            d[i] = last;
+          }
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.loop = true;
+          const lp = ctx.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.value = 900;
+          this.ambGain = ctx.createGain();
+          this.ambGain.gain.value = this.enabled ? 0.05 : 0;
+          src.connect(lp);
+          lp.connect(this.ambGain);
+          this.ambGain.connect(ctx.destination);
+          src.start();
+        }
+
+        // Музыка: простой бит и бас-линия в ля-миноре
+        startMusic() {
+          this.musicTimer = setInterval(() => this.musicTick(), 60);
+        }
+
+        musicTick() {
+          const ctx = this.ctx;
+          if (!ctx || !this.enabled || ctx.state !== 'running') return;
+          if (this.nextT < ctx.currentTime) this.nextT = ctx.currentTime + 0.05;
+          while (this.nextT < ctx.currentTime + 0.15) {
+            this.musicStep(this.step, this.nextT);
+            this.nextT += 0.2;
+            this.step = (this.step + 1) % 16;
+          }
+        }
+
+        musicStep(i, t) {
+          const ctx = this.ctx;
+          const bass = [110, 0, 110, 0, 130.8, 0, 146.8, 0, 110, 0, 98, 0, 130.8, 0, 146.8, 123.5];
+          if (bass[i]) {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = 'square';
+            o.frequency.value = bass[i];
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(0.035, t + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+            o.connect(g);
+            g.connect(ctx.destination);
+            o.start(t);
+            o.stop(t + 0.18);
+          }
+          if (i % 4 === 0) {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(130, t);
+            o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+            g.gain.setValueAtTime(0.14, t);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+            o.connect(g);
+            g.connect(ctx.destination);
+            o.start(t);
+            o.stop(t + 0.15);
+          }
+          if (i % 2 === 1) {
+            this.noise({ dur: 0.03, freq: 6000, peak: 0.02, at: t });
+          }
+        }
+
+        tone({ f0, f1, dur, type = 'triangle', peak = 0.16, delay = 0 }) {
+          const ctx = this.ensure();
+          if (!ctx) return;
+          try {
+            const t = ctx.currentTime + delay;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(f0, t);
+            if (f1) osc.frequency.exponentialRampToValueAtTime(Math.max(24, f1), t + dur);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.linearRampToValueAtTime(peak, t + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + dur + 0.02);
+          } catch (_) {}
+        }
+
+        noise({ dur = 0.08, freq = 900, peak = 0.14, at = null }) {
+          const ctx = this.ensure();
+          if (!ctx) return;
+          try {
+            const t0 = at === null ? ctx.currentTime : at;
+            const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+            const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) {
+              data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.45));
+            }
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(freq, t0);
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(peak, t0);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+            src.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            src.start(t0);
+          } catch (_) {}
+        }
+
+        // Свист и шорох ударов — у каждого удара свой звук
+        swoosh(type) {
+          if (type === 'jab') this.tone({ f0: 720, f1: 260, dur: 0.09, type: 'triangle', peak: 0.1 });
+          else if (type === 'hook') this.tone({ f0: 300, f1: 520, dur: 0.14, type: 'sawtooth', peak: 0.09 });
+          else if (type === 'uppercut') this.tone({ f0: 180, f1: 620, dur: 0.16, type: 'triangle', peak: 0.1 });
+          else if (type === 'kick') this.tone({ f0: 210, f1: 90, dur: 0.18, type: 'sawtooth', peak: 0.1 });
+          else if (type === 'special') this.tone({ f0: 160, f1: 980, dur: 0.3, type: 'sawtooth', peak: 0.12 });
+          else this.noise({ dur: 0.07, freq: 620, peak: 0.07 });
+        }
+
+        punchHit() {
+          this.tone({ f0: 210, f1: 52, dur: 0.14, type: 'triangle', peak: 0.26 });
+          this.noise({ dur: 0.09, freq: 1300, peak: 0.16 });
+          this.tone({ f0: 900, f1: 500, dur: 0.05, type: 'square', peak: 0.05 });
+        }
+
+        kickHit() {
+          this.tone({ f0: 160, f1: 34, dur: 0.22, type: 'sawtooth', peak: 0.26 });
+          this.noise({ dur: 0.13, freq: 760, peak: 0.19 });
+        }
+
+        comic() {
+          this.tone({ f0: 620, f1: 1240, dur: 0.12, type: 'square', peak: 0.07 });
+          this.tone({ f0: 1480, f1: 740, dur: 0.16, type: 'sine', peak: 0.05, delay: 0.05 });
+        }
+
+        clap() {
+          this.noise({ dur: 0.18, freq: 2400, peak: 0.12 });
+        }
+
+        blockHit() {
+          this.tone({ f0: 620, f1: 260, dur: 0.1, type: 'square', peak: 0.12 });
+          this.tone({ f0: 1200, f1: 900, dur: 0.06, type: 'sine', peak: 0.05 });
+        }
+
+        dash() {
+          this.tone({ f0: 260, f1: 110, dur: 0.12, type: 'sine', peak: 0.12 });
+          this.noise({ dur: 0.09, freq: 1400, peak: 0.08 });
+        }
+
+        wheelie() {
+          this.tone({ f0: 145, f1: 330, dur: 0.2, type: 'sawtooth', peak: 0.12 });
+          this.noise({ dur: 0.12, freq: 900, peak: 0.07 });
+        }
+
+        jump() {
+          this.tone({ f0: 185, f1: 420, dur: 0.14, type: 'sine', peak: 0.12 });
+        }
+
+        special() {
+          this.tone({ f0: 230, f1: 760, dur: 0.16, type: 'sawtooth', peak: 0.2 });
+          this.tone({ f0: 140, f1: 42, dur: 0.3, type: 'square', peak: 0.2, delay: 0.08 });
+          this.noise({ dur: 0.24, freq: 1650, peak: 0.2 });
+          this.comic();
+        }
+
+        ko() {
+          this.tone({ f0: 220, f1: 50, dur: 0.5, type: 'sawtooth', peak: 0.24 });
+          this.tone({ f0: 330, f1: 105, dur: 0.4, type: 'triangle', peak: 0.14, delay: 0.08 });
+        }
+
+        crowd() {
+          this.noise({ dur: 1.4, freq: 1150, peak: 0.1 });
+          this.tone({ f0: 330, f1: 440, dur: 0.7, type: 'sawtooth', peak: 0.025, delay: 0.1 });
+          this.clap();
+        }
+
+        bell() {
+          this.tone({ f0: 587.33, f1: 587.33, dur: 0.35, type: 'sine', peak: 0.14 });
+          this.tone({ f0: 880, f1: 880, dur: 0.45, type: 'triangle', peak: 0.09, delay: 0.05 });
+        }
+
+        whistle() {
+          this.tone({ f0: 1900, f1: 2250, dur: 0.32, type: 'sine', peak: 0.08 });
+        }
+
+        roll() {
+          this.noise({ dur: 0.05, freq: 720, peak: 0.035 });
+        }
+
+        // Пуканье при поражении: низкий хрип с дрожью и шелест
+        fart() {
+          const ctx = this.ensure();
+          if (!ctx) return;
+          try {
+            const t = ctx.currentTime + 0.3;
+            const o = ctx.createOscillator();
+            const lfo = ctx.createOscillator();
+            const lfoGain = ctx.createGain();
+            const g = ctx.createGain();
+            const lp = ctx.createBiquadFilter();
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(96, t);
+            o.frequency.exponentialRampToValueAtTime(48, t + 0.8);
+            lfo.type = 'square';
+            lfo.frequency.value = 22;
+            lfoGain.gain.value = 16;
+            lfo.connect(lfoGain);
+            lfoGain.connect(o.frequency);
+            lp.type = 'lowpass';
+            lp.frequency.value = 380;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(0.3, t + 0.03);
+            g.gain.setValueAtTime(0.3, t + 0.5);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+            o.connect(lp);
+            lp.connect(g);
+            g.connect(ctx.destination);
+            o.start(t);
+            lfo.start(t);
+            o.stop(t + 0.9);
+            lfo.stop(t + 0.9);
+
+            const len = Math.floor(ctx.sampleRate * 0.6);
+            const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) {
+              d[i] = (Math.random() * 2 - 1) * (0.4 + 0.6 * Math.abs(Math.sin(i / 900)));
+            }
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = 500;
+            bp.Q.value = 1.2;
+            const ng = ctx.createGain();
+            ng.gain.setValueAtTime(0.0001, t);
+            ng.gain.linearRampToValueAtTime(0.22, t + 0.04);
+            ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+            src.connect(bp);
+            bp.connect(ng);
+            ng.connect(ctx.destination);
+            src.start(t);
+          } catch (_) {}
+        }
+      }
+
+      const sound = new SoundSystem();
+
+      // ==========================================
+      // 2. ДАННЫЕ БОЙЦОВ И РАУНДОВ
+      // ==========================================
+      const PLAYER_ROSTER = [
+        { name: 'Жёлтый Чемпион', color: '#facc15', belt: '#38bdf8', speed: 325, hp: 100, wheelchair: false },
+        { name: 'Турбо-Гонщик 🦽', color: '#34d399', belt: '#facc15', speed: 410, hp: 112, wheelchair: true },
+        { name: 'Алый Молния', color: '#fb7185', belt: '#fde047', speed: 355, hp: 105, wheelchair: false },
+        { name: 'Кибер-Колесо 🦽', color: '#38bdf8', belt: '#f472b6', speed: 430, hp: 118, wheelchair: true },
+        { name: 'Костыльный Герой 🩼', color: '#a78bfa', belt: '#fde047', speed: 300, hp: 110, wheelchair: false, style: 'crutch', trunks: '#4c1d95' },
+        { name: 'Бинтованный Ёж 🩹', color: '#fca5a5', belt: '#f8fafc', speed: 330, hp: 108, wheelchair: false, style: 'mummy', trunks: '#334155' }
+      ];
+
+      const OPPONENT_ROSTER = [
+        { name: 'Красный Хулиган', color: '#f43f5e', belt: '#ffffff', speed: 235, hp: 100, scale: 1.0, wheelchair: false, dmgMult: 0.9 },
+        { name: 'Бирюзовый Вихрь 🦽', color: '#2dd4bf', belt: '#facc15', speed: 340, hp: 115, scale: 1.0, wheelchair: true, dmgMult: 1.05 },
+        { name: 'Синий Громила', color: '#3b82f6', belt: '#facc15', speed: 205, hp: 135, scale: 1.12, wheelchair: false, dmgMult: 1.18 },
+        { name: 'Оранжевый Барон 🦽', color: '#fb923c', belt: '#38bdf8', speed: 360, hp: 145, scale: 1.06, wheelchair: true, dmgMult: 1.25 },
+        { name: 'Розовый Титан', color: '#f472b6', belt: '#fde047', speed: 255, hp: 175, scale: 1.16, wheelchair: false, dmgMult: 1.35 },
+        { name: 'Костыльный Дед 🩼', color: '#94a3b8', belt: '#fbbf24', speed: 190, hp: 120, scale: 1.0, wheelchair: false, dmgMult: 1.0, style: 'crutch', trunks: '#1e293b' },
+        { name: 'Забинтованный Мумий 🩹', color: '#e7e5e4', belt: '#dc2626', speed: 245, hp: 130, scale: 1.05, wheelchair: false, dmgMult: 1.15, style: 'mummy', trunks: '#7f1d1d' },
+        { name: 'Зелёный Монстр 👹', color: '#65a30d', belt: '#fde047', speed: 230, hp: 150, scale: 1.2, wheelchair: false, dmgMult: 1.3, style: 'monster', trunks: '#581c87' }
+      ];
+
+      const AI_SETTINGS = {
+        easy:   { reactionMin: 0.45, reactionMax: 0.85, attackChance: 0.52, blockChance: 0.2,  dashChance: 0.16, specialChance: 0.4,  damageScale: 0.82 },
+        normal: { reactionMin: 0.24, reactionMax: 0.46, attackChance: 0.78, blockChance: 0.45, dashChance: 0.34, specialChance: 0.72, damageScale: 1.0 },
+        hard:   { reactionMin: 0.12, reactionMax: 0.25, attackChance: 0.94, blockChance: 0.7,  dashChance: 0.52, specialChance: 0.94, damageScale: 1.2 }
+      };
+
+      // ==========================================
+      // 3. СОСТОЯНИЕ И КОНСТАНТЫ АРЕНЫ
+      // ==========================================
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const arenaBox = document.getElementById('arenaBox');
+
+      const LOGIC_W = 960;
+      const LOGIC_H = 440;
+      const FLOOR_Y = 376;
+      const WALL_L = 56;
+      const WALL_R = LOGIC_W - 56;
+      const GRAVITY = 2150;
+      const WINS_NEEDED = 2;
+      const OUT = '#0b0d12';
+      const SKINS = ['#f1c27d', '#c68642', '#8d5524', '#ffdbac', '#e0ac69'];
+      const SHIRTS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#f97316', '#14b8a6', '#ec4899'];
+      const HAIRS = ['#1f2937', '#7c2d12', '#facc15', '#e5e7eb', '#334155'];
+
+      const state = {
+        mode: 'ai',
+        difficulty: 'normal',
+        round: 1,
+        wins: [0, 0],
+        p1RosterIdx: 0,
+        phase: 'fighting',
+        phaseTimer: 0,
+        hitstop: 0,
+        shakeTime: 0,
+        shakePower: 0,
+        particles: [],
+        popups: [],
+        shockwaves: [],
+        bursts: [],
+        aiTimer: 0.25,
+        aiDir: 0,
+        aiBlock: false
+      };
+
+      let NOW = 0;
+
+      function makeFighter(id, name, x, facing, preset) {
+        return {
+          id, name, x,
+          y: FLOOR_Y,
+          vx: 0, vy: 0,
+          facing,
+          primaryColor: preset.color,
+          accentColor: preset.belt,
+          moveSpeed: preset.speed,
+          wheelchair: Boolean(preset.wheelchair),
+          style: preset.style || 'normal',
+          trunks: preset.trunks || null,
+          scale: preset.scale || 1,
+          dmgMult: preset.dmgMult || 1,
+          wheelAngle: 0,
+          rollTick: -1,
+          hp: preset.hp,
+          maxHp: preset.hp,
+          energy: 0,
+          maxEnergy: 100,
+          grounded: true,
+          blocking: false,
+          dashCooldown: 0,
+          stunTimer: 0,
+          invulnTimer: 0,
+          attack: null,
+          walkCycle: 0,
+          hitAt: -1e9,
+          winPose: false,
+          controls: { left: false, right: false, jump: false, block: false, dash: false, punch: false, kick: false, special: false }
+        };
+      }
+
+      const fighters = [
+        makeFighter(0, PLAYER_ROSTER[0].name, 265, 1, PLAYER_ROSTER[0]),
+        makeFighter(1, OPPONENT_ROSTER[0].name, 695, -1, OPPONENT_ROSTER[0])
+      ];
+
+      // Зрители: три ряда, их много и они двигаются
+      const crowd = [];
+      for (let row = 0; row < 3; row++) {
+        const count = 30 - row * 2;
+        for (let i = 0; i < count; i++) {
+          crowd.push({
+            x: -10 + (i / (count - 1)) * (LOGIC_W + 20) + (Math.random() - 0.5) * 14,
+            baseY: 150 + row * 22,
+            r: 9 + row * 2.2,
+            shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+            skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+            hair: HAIRS[Math.floor(Math.random() * HAIRS.length)],
+            phase: Math.random() * Math.PI * 2,
+            cheerUntil: 0
+          });
+        }
+      }
+
+      function cheerCrowd(duration = 700) {
+        const t = performance.now();
+        for (const c of crowd) c.cheerUntil = t + duration + Math.random() * 350;
+      }
+
+      // ==========================================
+      // 4. АДАПТИВНЫЙ ХОЛСТ И ИНТЕРФЕЙС
+      // ==========================================
+      function resizeCanvas() {
+        const rect = arenaBox.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.max(280, Math.floor(rect.width * dpr));
+        const h = Math.max(180, Math.floor(rect.height * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+      }
+
+      let bannerTimer = null;
+      function showBanner(text, ms = 1250) {
+        const el = document.getElementById('bannerToast');
+        el.textContent = text;
+        el.classList.remove('opacity-0');
+        el.classList.add('opacity-100');
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => {
+          el.classList.remove('opacity-100');
+          el.classList.add('opacity-0');
+        }, ms);
+      }
+
+      function updateActionLabels() {
+        document.getElementById('p1KickBtn').textContent = fighters[0].wheelchair ? 'Таран' : 'Нога';
+        document.getElementById('p2KickBtn').textContent = fighters[1].wheelchair ? 'Таран' : 'Нога';
+      }
+
+      function syncHud() {
+        const f1 = fighters[0];
+        const f2 = fighters[1];
+        const p1Pct = clamp((f1.hp / f1.maxHp) * 100, 0, 100);
+        const p2Pct = clamp((f2.hp / f2.maxHp) * 100, 0, 100);
+        document.getElementById('p1HpBar').style.width = `${p1Pct}%`;
+        document.getElementById('p2HpBar').style.width = `${p2Pct}%`;
+        document.getElementById('p1HpText').textContent = `${Math.ceil(f1.hp)} HP`;
+        document.getElementById('p2HpText').textContent = `${Math.ceil(f2.hp)} HP`;
+
+        const e1Pct = clamp((f1.energy / f1.maxEnergy) * 100, 0, 100);
+        const e2Pct = clamp((f2.energy / f2.maxEnergy) * 100, 0, 100);
+        document.getElementById('p1EnergyBar').style.width = `${e1Pct}%`;
+        document.getElementById('p2EnergyBar').style.width = `${e2Pct}%`;
+
+        const r1 = f1.energy >= f1.maxEnergy;
+        const r2 = f2.energy >= f2.maxEnergy;
+        const b1 = document.getElementById('p1EnergyBadge');
+        b1.textContent = r1 ? 'СПЕЦ ГОТОВ!' : `СПЕЦ ${Math.floor(e1Pct)}%`;
+        b1.className = r1 ? 'text-[10px] font-black text-cyan-300 animate-pulse shrink-0' : 'text-[10px] font-extrabold text-slate-400 tabular-nums shrink-0';
+        const b2 = document.getElementById('p2EnergyBadge');
+        b2.textContent = r2 ? 'СПЕЦ ГОТОВ!' : `СПЕЦ ${Math.floor(e2Pct)}%`;
+        b2.className = r2 ? 'text-[10px] font-black text-fuchsia-300 animate-pulse shrink-0' : 'text-[10px] font-extrabold text-slate-400 tabular-nums shrink-0';
+
+        document.getElementById('p1SpecialBtn').disabled = !r1;
+        document.getElementById('p2SpecialBtn').disabled = !r2 || state.mode === 'ai';
+        document.getElementById('p1Name').textContent = f1.name;
+        document.getElementById('p2Name').textContent = f2.name;
+        document.getElementById('roundDisplay').textContent = `РАУНД ${state.round}`;
+        document.getElementById('winsDisplay').textContent = `${state.wins[0]} : ${state.wins[1]}`;
+        document.getElementById('p2RoleTag').textContent = `R${state.round}`;
+      }
+
+      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+      function applyModeUi() {
+        const isAi = state.mode === 'ai';
+        document.getElementById('modeAiBtn').className = isAi
+          ? 'px-2.5 py-1.5 rounded-lg text-xs font-extrabold bg-amber-400 text-slate-950 transition cursor-pointer'
+          : 'px-2.5 py-1.5 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition cursor-pointer';
+        document.getElementById('mode2pBtn').className = !isAi
+          ? 'px-2.5 py-1.5 rounded-lg text-xs font-extrabold bg-rose-500 text-white transition cursor-pointer'
+          : 'px-2.5 py-1.5 rounded-lg text-xs font-extrabold text-slate-300 hover:text-white transition cursor-pointer';
+
+        document.getElementById('difficultyWrap').style.opacity = isAi ? '1' : '0.45';
+        document.getElementById('difficultySelect').disabled = !isAi;
+
+        if (isAi) {
+          fighters[1].name = OPPONENT_ROSTER[(state.round - 1) % OPPONENT_ROSTER.length].name;
+        } else {
+          fighters[1].name = 'Боец 2';
+        }
+
+        document.getElementById('p2CtrlTitle').textContent = isAi ? 'Боец 2 (ИИ)' : 'Боец 2';
+        document.getElementById('p2CtrlHint').textContent = isAi
+          ? 'В режиме 1 Игрок вторым бойцом управляет ИИ'
+          : '←/→ • ↑ прыжок • ↓ блок • Shift дэш • K рука • L нога/таран • / спец';
+
+        document.querySelectorAll('#p2ControlsPanel .game-btn').forEach((btn) => {
+          if (btn.id === 'p2SpecialBtn') {
+            btn.disabled = isAi || fighters[1].energy < fighters[1].maxEnergy;
+          } else {
+            btn.disabled = isAi;
+            btn.classList.toggle('opacity-45', isAi);
+          }
+        });
+
+        updateActionLabels();
+        syncHud();
+      }
+
+      // ==========================================
+      // 5. РАУНДЫ, ДЕЙСТВИЯ И ФИЗИКА
+      // ==========================================
+      function applyRosterPreset(fighter, preset, hpBoost = 0, dmgBoost = 0) {
+        fighter.name = preset.name;
+        fighter.primaryColor = preset.color;
+        fighter.accentColor = preset.belt;
+        fighter.moveSpeed = preset.speed;
+        fighter.wheelchair = Boolean(preset.wheelchair);
+        fighter.style = preset.style || 'normal';
+        fighter.trunks = preset.trunks || null;
+        fighter.scale = preset.scale || 1;
+        fighter.maxHp = preset.hp + hpBoost;
+        fighter.hp = fighter.maxHp;
+        fighter.dmgMult = (preset.dmgMult || 1) + dmgBoost;
+      }
+
+      function switchPlayerFighter() {
+        sound.ensure();
+        state.p1RosterIdx = (state.p1RosterIdx + 1) % PLAYER_ROSTER.length;
+        const nextPreset = PLAYER_ROSTER[state.p1RosterIdx];
+        const ratio = fighters[0].maxHp > 0 ? fighters[0].hp / fighters[0].maxHp : 1;
+        fighters[0].name = nextPreset.name;
+        fighters[0].primaryColor = nextPreset.color;
+        fighters[0].accentColor = nextPreset.belt;
+        fighters[0].moveSpeed = nextPreset.speed;
+        fighters[0].wheelchair = nextPreset.wheelchair;
+        fighters[0].style = nextPreset.style || 'normal';
+        fighters[0].trunks = nextPreset.trunks || null;
+        fighters[0].maxHp = nextPreset.hp;
+        fighters[0].hp = Math.max(1, Math.round(nextPreset.hp * ratio));
+        spawnSparks(fighters[0].x, fighters[0].y - 55, fighters[0].primaryColor, 14, 0.9);
+        updateActionLabels();
+        syncHud();
+        showBanner(`Боец: ${nextPreset.name}`, 900);
+      }
+
+      function startRound(roundNum, rotatePlayerOnWin = false) {
+        state.round = roundNum;
+        state.phase = 'fighting';
+        state.phaseTimer = 0;
+        state.particles = [];
+        state.popups = [];
+        state.shockwaves = [];
+        state.bursts = [];
+        document.body.classList.remove('match-over');
+
+        if (rotatePlayerOnWin) {
+          state.p1RosterIdx = (state.p1RosterIdx + 1) % PLAYER_ROSTER.length;
+        }
+
+        const p1Preset = PLAYER_ROSTER[state.p1RosterIdx];
+        const oppTemplate = OPPONENT_ROSTER[(roundNum - 1) % OPPONENT_ROSTER.length];
+        const cycle = Math.floor((roundNum - 1) / OPPONENT_ROSTER.length);
+
+        const freshP1 = makeFighter(0, p1Preset.name, 265, 1, p1Preset);
+        freshP1.energy = fighters[0].energy;
+        fighters[0] = freshP1;
+
+        const oppPreset = { ...oppTemplate, name: state.mode === '2p' ? 'Боец 2' : oppTemplate.name };
+        const freshP2 = makeFighter(1, oppPreset.name, 695, -1, oppPreset);
+        applyRosterPreset(freshP2, oppPreset, cycle * 25, cycle * 0.12);
+        freshP2.energy = fighters[1].energy;
+        fighters[1] = freshP2;
+
+        updateActionLabels();
+        syncHud();
+        sound.bell();
+        sound.whistle();
+        cheerCrowd(900);
+        showBanner(`РАУНД ${roundNum} — БОЙ!`, 1200);
+      }
+
+      function startNewMatch() {
+        state.wins = [0, 0];
+        state.p1RosterIdx = 0;
+        fighters[0].energy = 0;
+        fighters[1].energy = 0;
+        document.getElementById('matchOverlay').classList.add('hidden');
+        startRound(1, false);
+      }
+
+      function triggerJump(fighter) {
+        if (state.phase !== 'fighting' || fighter.stunTimer > 0) return;
+        if (fighter.grounded) {
+          fighter.vy = -780;
+          fighter.grounded = false;
+          fighter.blocking = false;
+          sound.jump();
+          spawnDust(fighter.x, FLOOR_Y, 6, fighter.primaryColor);
+        }
+      }
+
+      function triggerDash(fighter) {
+        if (state.phase !== 'fighting' || fighter.stunTimer > 0 || fighter.attack) return;
+        if (fighter.dashCooldown > 0) return;
+        const dir = (fighter.controls.right ? 1 : 0) - (fighter.controls.left ? 1 : 0) || fighter.facing;
+        fighter.facing = dir;
+        fighter.blocking = false;
+        fighter.vx = dir * (fighter.wheelchair ? 690 : 610);
+        fighter.dashCooldown = 0.65;
+        fighter.invulnTimer = Math.max(fighter.invulnTimer, 0.14);
+        if (fighter.wheelchair) sound.wheelie();
+        else sound.dash();
+        spawnDust(fighter.x, fighter.y, 8, fighter.accentColor);
+      }
+
+      function triggerAttack(fighter, type) {
+        if (state.phase !== 'fighting' || fighter.stunTimer > 0 || fighter.attack) return;
+
+        if (type === 'special') {
+          if (fighter.energy < fighter.maxEnergy) return;
+          fighter.energy = 0;
+          fighter.blocking = false;
+          fighter.vx = fighter.facing * (fighter.wheelchair ? 620 : 540);
+          if (!fighter.grounded) fighter.vy = -210;
+          fighter.attack = { type: 'special', timer: 0, duration: 0.34, hitApplied: false, damage: 28, reach: fighter.wheelchair ? 138 : 128, knockback: 560, energyGain: 0 };
+          sound.swoosh('special');
+          state.shockwaves.push({ x: fighter.x + fighter.facing * 24, y: fighter.y - 54, radius: 12, maxRadius: 118, alpha: 0.85, color: fighter.primaryColor });
+          syncHud();
+          return;
+        }
+
+        fighter.blocking = false;
+        if (type === 'punch') {
+          fighter.vx = fighter.facing * 155;
+          fighter.attack = { type: 'punch', timer: 0, duration: 0.22, hitApplied: false, damage: 10, reach: 84, knockback: 235, energyGain: 18 };
+          sound.swoosh(Math.random() < 0.5 ? 'jab' : 'hook');
+        } else if (type === 'kick') {
+          fighter.vx = fighter.facing * (fighter.wheelchair ? 310 : 215);
+          fighter.attack = {
+            type: 'kick', timer: 0, duration: 0.3, hitApplied: false,
+            damage: fighter.wheelchair ? 18 : 16, reach: fighter.wheelchair ? 116 : 104,
+            knockback: fighter.wheelchair ? 410 : 360, energyGain: 25
+          };
+          if (fighter.wheelchair) sound.wheelie();
+          else sound.swoosh('kick');
+        }
+      }
+
+      function spawnSparks(x, y, color, count = 12, speedScale = 1) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = (110 + Math.random() * 290) * speedScale;
+          state.particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 90,
+            size: 3 + Math.random() * 4.5,
+            life: 0.28 + Math.random() * 0.22,
+            maxLife: 0.5,
+            color: i % 3 === 0 ? '#ffffff' : color
+          });
+        }
+      }
+
+      function spawnDust(x, y, count = 7, color = '#94a3b8') {
+        for (let i = 0; i < count; i++) {
+          state.particles.push({
+            x: x + (Math.random() - 0.5) * 24,
+            y: y - 2,
+            vx: (Math.random() - 0.5) * 140,
+            vy: -30 - Math.random() * 90,
+            size: 4 + Math.random() * 4,
+            life: 0.25 + Math.random() * 0.15,
+            maxLife: 0.4,
+            color
+          });
+        }
+      }
+
+      function spawnPopup(x, y, text, color = '#facc15') {
+        state.popups.push({ x, y, vy: -70, text, color, life: 0.65, maxLife: 0.65 });
+      }
+
+      function spawnBurst(x, y, color) {
+        state.bursts.push({ x, y, color, t0: NOW });
+      }
+
+      function resolveHit(attacker, defender) {
+        const atk = attacker.attack;
+        if (!atk || atk.hitApplied) return;
+
+        const progress = atk.timer / atk.duration;
+        if (progress < 0.28 || progress > 0.74) return;
+
+        const dx = defender.x - attacker.x;
+        const dy = Math.abs(defender.y - attacker.y);
+        const inFront = attacker.facing === 1 ? dx >= -18 && dx <= atk.reach : dx <= 18 && dx >= -atk.reach;
+
+        if (inFront && dy < 92 && defender.invulnTimer <= 0) {
+          atk.hitApplied = true;
+          const hitX = (attacker.x + defender.x) * 0.5;
+          const hitY = Math.min(attacker.y, defender.y) - (atk.type === 'kick' ? 46 : 68);
+
+          const isBlocked = defender.blocking && atk.type !== 'special';
+          if (isBlocked) {
+            defender.vx = attacker.facing * (atk.knockback * 0.45);
+            defender.stunTimer = 0.12;
+            attacker.energy = Math.min(attacker.maxEnergy, attacker.energy + Math.floor(atk.energyGain * 0.4));
+            sound.blockHit();
+            spawnSparks(hitX, hitY, '#38bdf8', 8, 0.7);
+            spawnPopup(hitX, hitY - 12, 'БЛОК!', '#7dd3fc');
+            spawnBurst(hitX, hitY, '#7dd3fc');
+            syncHud();
+            return;
+          }
+
+          let dmg = atk.damage * attacker.dmgMult;
+          if (attacker.id === 1 && state.mode === 'ai') dmg *= AI_SETTINGS[state.difficulty].damageScale;
+
+          defender.hp = Math.max(0, defender.hp - dmg);
+          defender.stunTimer = atk.type === 'special' ? 0.36 : 0.18;
+          defender.invulnTimer = 0.12;
+          defender.hitAt = NOW;
+          defender.vx = attacker.facing * atk.knockback;
+          if (atk.type === 'special' && defender.grounded) {
+            defender.vy = -260;
+            defender.grounded = false;
+          }
+
+          attacker.energy = Math.min(attacker.maxEnergy, attacker.energy + atk.energyGain);
+          defender.energy = Math.min(defender.maxEnergy, defender.energy + 9);
+
+          state.shakeTime = atk.type === 'special' ? 0.26 : 0.12;
+          state.shakePower = atk.type === 'special' ? 11 : 5;
+          state.hitstop = atk.type === 'special' ? 0.05 : 0.02;
+
+          spawnBurst(hitX, hitY, atk.type === 'special' ? '#22d3ee' : atk.type === 'kick' ? '#fb923c' : '#facc15');
+
+          if (atk.type === 'kick') {
+            sound.kickHit();
+            spawnSparks(hitX, hitY, '#fb923c', 15, 1.15);
+            spawnPopup(hitX, hitY - 14, attacker.wheelchair ? `ТАРАН -${Math.round(dmg)}` : `-${Math.round(dmg)}`, '#fb923c');
+          } else if (atk.type === 'special') {
+            sound.special();
+            spawnSparks(hitX, hitY, '#22d3ee', 26, 1.5);
+            spawnPopup(hitX, hitY - 22, `СПЕЦ -${Math.round(dmg)}!`, '#22d3ee');
+          } else {
+            sound.punchHit();
+            sound.comic();
+            sound.clap();
+            spawnSparks(hitX, hitY, '#facc15', 11, 0.95);
+            spawnPopup(hitX, hitY - 12, `-${Math.round(dmg)}`, '#facc15');
+          }
+
+          if (atk.type === 'special' || dmg >= 13) cheerCrowd(700);
+          syncHud();
+
+          if (defender.hp <= 0) handleRoundEnd(attacker.id);
+        }
+      }
+
+      function handleRoundEnd(winnerId) {
+        if (state.phase !== 'fighting') return;
+        state.phase = 'round_over';
+        state.phaseTimer = 1.65;
+        state.wins[winnerId] += 1;
+        state.shakeTime = 0.32;
+        state.shakePower = 12;
+
+        const loser = fighters[1 - winnerId];
+        const winner = fighters[winnerId];
+        winner.winPose = true;
+        loser.vx = winner.facing * 340;
+        loser.vy = -240;
+        loser.grounded = false;
+
+        sound.ko();
+        sound.crowd();
+        sound.fart();
+        spawnPopup(loser.x, FLOOR_Y - 100, 'ПФФФ!', '#a3e635');
+        cheerCrowd(2000);
+        spawnSparks(winner.x, FLOOR_Y - 80, winner.primaryColor, 40, 1.4);
+        syncHud();
+
+        if (state.wins[winnerId] >= WINS_NEEDED) {
+          showBanner('НОКАУТ! ПОБЕДА В МАТЧЕ!', 1450);
+        } else {
+          showBanner(`НОКАУТ! РАУНД ЗА ${winner.name}`, 1500);
+        }
+      }
+
+      function updateAi(dt, ai, target) {
+        if (state.phase !== 'fighting' || ai.stunTimer > 0) return;
+
+        const cfg = AI_SETTINGS[state.difficulty];
+        const dx = target.x - ai.x;
+        const dist = Math.abs(dx);
+
+        state.aiTimer -= dt;
+        if (state.aiTimer <= 0) {
+          state.aiTimer = cfg.reactionMin + Math.random() * (cfg.reactionMax - cfg.reactionMin);
+
+          if (target.attack && dist < 130 && Math.random() < cfg.blockChance) {
+            state.aiBlock = true;
+            state.aiDir = 0;
+          } else {
+            state.aiBlock = false;
+            if (dist > 110) state.aiDir = Math.sign(dx);
+            else if (dist < 56 && Math.random() < 0.35) state.aiDir = -Math.sign(dx);
+            else state.aiDir = Math.random() < 0.25 ? Math.sign(dx) : 0;
+          }
+
+          if (!ai.wheelchair && ai.grounded && dist > 155 && Math.random() < 0.14 * cfg.attackChance) {
+            triggerJump(ai);
+          } else if (ai.dashCooldown <= 0 && dist > 140 && Math.random() < cfg.dashChance) {
+            ai.controls.right = dx > 0;
+            ai.controls.left = dx < 0;
+            triggerDash(ai);
+            ai.controls.right = false;
+            ai.controls.left = false;
+          }
+
+          if (!ai.attack && !state.aiBlock) {
+            if (ai.energy >= ai.maxEnergy && dist < 150 && Math.random() < cfg.specialChance) {
+              triggerAttack(ai, 'special');
+            } else if (dist < 118 && Math.random() < cfg.attackChance) {
+              const kind = dist > 78 || ai.wheelchair || Math.random() < 0.45 ? 'kick' : 'punch';
+              triggerAttack(ai, kind);
+            }
+          }
+        }
+
+        if (!ai.attack) {
+          ai.blocking = state.aiBlock && ai.grounded;
+          if (!ai.blocking) {
+            ai.vx += (state.aiDir * ai.moveSpeed - ai.vx) * Math.min(1, dt * 14);
+          } else {
+            ai.vx *= Math.pow(0.001, dt);
+          }
+        }
+      }
+
+      function updateFighter(f, opp, dt) {
+        if (f.stunTimer > 0) f.stunTimer = Math.max(0, f.stunTimer - dt);
+        if (f.invulnTimer > 0) f.invulnTimer = Math.max(0, f.invulnTimer - dt);
+        if (f.dashCooldown > 0) f.dashCooldown = Math.max(0, f.dashCooldown - dt);
+
+        const humanControlled = f.id === 0 || (f.id === 1 && state.mode === '2p');
+        if (state.phase === 'fighting' && humanControlled) {
+          const c = f.controls;
+          f.blocking = c.block && f.grounded && !f.attack && f.stunTimer <= 0;
+          if (c.jump) triggerJump(f);
+          if (c.dash) triggerDash(f);
+          if (c.special) triggerAttack(f, 'special');
+          if (c.kick) triggerAttack(f, 'kick');
+          if (c.punch) triggerAttack(f, 'punch');
+
+          if (!f.attack && f.stunTimer <= 0 && !f.blocking && f.dashCooldown < 0.45) {
+            const dir = (c.right ? 1 : 0) - (c.left ? 1 : 0);
+            f.vx += (dir * f.moveSpeed - f.vx) * Math.min(1, dt * 15);
+          } else if (f.blocking) {
+            f.vx *= Math.pow(0.001, dt);
+          }
+        } else if (state.phase !== 'fighting') {
+          f.blocking = false;
+          f.vx *= Math.pow(0.02, dt);
+        }
+
+        if (!f.attack && state.phase === 'fighting') {
+          if (opp.x > f.x + 8) f.facing = 1;
+          else if (opp.x < f.x - 8) f.facing = -1;
+        }
+
+        if (f.attack) {
+          f.attack.timer += dt;
+          resolveHit(f, opp);
+          if (f.attack && f.attack.timer >= f.attack.duration) f.attack = null;
+        }
+
+        const prevX = f.x;
+        f.x += f.vx * dt;
+        f.vy += GRAVITY * dt;
+        f.y += f.vy * dt;
+
+        const damping = f.grounded ? 0.0015 : 0.08;
+        f.vx *= Math.pow(damping, dt);
+
+        if (f.y >= FLOOR_Y) {
+          if (!f.grounded && f.vy > 240) spawnDust(f.x, FLOOR_Y, 5, '#64748b');
+          f.y = FLOOR_Y;
+          f.vy = 0;
+          f.grounded = true;
+        }
+
+        f.x = clamp(f.x, WALL_L, WALL_R);
+        f.wheelAngle += (f.x - prevX) * 0.032;
+
+        if (f.grounded && Math.abs(f.vx) > 25) f.walkCycle += dt * Math.abs(f.vx) * 0.045;
+        else f.walkCycle += dt * 2.2;
+      }
+
+      function separateFighters() {
+        const a = fighters[0];
+        const b = fighters[1];
+        const minSep = 44;
+        const dx = b.x - a.x;
+        const dy = Math.abs(b.y - a.y);
+        if (dy < 68 && Math.abs(dx) < minSep) {
+          const sign = dx >= 0 ? 1 : -1;
+          const overlap = (minSep - Math.abs(dx)) * 0.5;
+          a.x = clamp(a.x - sign * overlap, WALL_L, WALL_R);
+          b.x = clamp(b.x + sign * overlap, WALL_L, WALL_R);
+        }
+      }
+
+      function updateEffects(dt) {
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+          const p = state.particles[i];
+          p.life -= dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 680 * dt;
+          if (p.y > FLOOR_Y) {
+            p.y = FLOOR_Y;
+            p.vy *= -0.35;
+          }
+          if (p.life <= 0) state.particles.splice(i, 1);
+        }
+        for (let i = state.popups.length - 1; i >= 0; i--) {
+          const pop = state.popups[i];
+          pop.life -= dt;
+          pop.y += pop.vy * dt;
+          pop.vy *= Math.pow(0.2, dt);
+          if (pop.life <= 0) state.popups.splice(i, 1);
+        }
+        for (let i = state.shockwaves.length - 1; i >= 0; i--) {
+          const sw = state.shockwaves[i];
+          sw.radius += (sw.maxRadius - sw.radius) * Math.min(1, dt * 14);
+          sw.alpha -= dt * 2.8;
+          if (sw.alpha <= 0) state.shockwaves.splice(i, 1);
+        }
+        state.bursts = state.bursts.filter((b) => NOW - b.t0 < 260);
+      }
+
+      function stepSimulation(dt) {
+        if (state.shakeTime > 0) state.shakeTime = Math.max(0, state.shakeTime - dt);
+
+        if (state.hitstop > 0) {
+          state.hitstop = Math.max(0, state.hitstop - dt);
+          updateEffects(dt * 0.35);
+          return;
+        }
+
+        if (state.mode === 'ai') updateAi(dt, fighters[1], fighters[0]);
+
+        updateFighter(fighters[0], fighters[1], dt);
+        updateFighter(fighters[1], fighters[0], dt);
+        separateFighters();
+        updateEffects(dt);
+
+        if (state.phase === 'round_over') {
+          state.phaseTimer -= dt;
+          if (state.phaseTimer <= 0) {
+            const w0 = state.wins[0] >= WINS_NEEDED;
+            const w1 = state.wins[1] >= WINS_NEEDED;
+            if (w0 || w1) {
+              state.phase = 'match_over';
+              document.getElementById('winnerTitle').textContent = `Победа: ${w0 ? fighters[0].name : fighters[1].name}!`;
+              document.getElementById('winnerSubtitle').textContent = `Итоговый счёт по раундам: ${state.wins[0]} : ${state.wins[1]}.`;
+              document.getElementById('matchOverlay').classList.remove('hidden');
+              document.body.classList.add('match-over');
+            } else {
+              startRound(state.round + 1, true);
+            }
+          }
+        }
+      }
+
+      // ==========================================
+      // 6. ОТРИСОВКА: мультяшный стиль с чёрным контуром
+      // ==========================================
+      function drawArena() {
+        const bg = ctx.createLinearGradient(0, 0, 0, LOGIC_H);
+        bg.addColorStop(0, '#0b1020');
+        bg.addColorStop(0.6, '#1b2540');
+        bg.addColorStop(1, '#090d16');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, LOGIC_W, LOGIC_H);
+
+        // Цветные прожекторы
+        ctx.save();
+        const beams = [
+          { x: 160, c: 'rgba(250, 204, 21, 0.10)' },
+          { x: 480, c: 'rgba(244, 63, 94, 0.09)' },
+          { x: 800, c: 'rgba(56, 189, 248, 0.10)' }
+        ];
+        for (const b of beams) {
+          ctx.fillStyle = b.c;
+          ctx.beginPath();
+          ctx.moveTo(b.x, 0);
+          ctx.lineTo(b.x - 110, FLOOR_Y);
+          ctx.lineTo(b.x + 110, FLOOR_Y);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        drawCrowd();
+
+        // Пол ринга
+        const floorGrad = ctx.createLinearGradient(0, FLOOR_Y, 0, LOGIC_H);
+        floorGrad.addColorStop(0, '#3b4560');
+        floorGrad.addColorStop(0.16, '#262e44');
+        floorGrad.addColorStop(1, '#0b0f19');
+        ctx.fillStyle = floorGrad;
+        ctx.fillRect(0, FLOOR_Y, LOGIC_W, LOGIC_H - FLOOR_Y);
+
+        // Линии на полу
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(WALL_L - 24, FLOOR_Y);
+        ctx.lineTo(WALL_R + 24, FLOOR_Y);
+        ctx.stroke();
+
+        // Столбы и канаты
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 10;
+        for (const px of [WALL_L - 16, WALL_R + 16]) {
+          ctx.beginPath();
+          ctx.moveTo(px, 186);
+          ctx.lineTo(px, FLOOR_Y + 4);
+          ctx.stroke();
+        }
+
+        const ropeYs = [228, 278, 328];
+        const ropeCols = ['#ef4444', '#f8fafc', '#3b82f6'];
+        ropeYs.forEach((ry, i) => {
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 9;
+          ctx.beginPath();
+          ctx.moveTo(WALL_L - 16, ry);
+          ctx.lineTo(WALL_R + 16, ry);
+          ctx.stroke();
+          ctx.strokeStyle = ropeCols[i];
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(WALL_L - 16, ry);
+          ctx.lineTo(WALL_R + 16, ry);
+          ctx.stroke();
+        });
+      }
+
+      // Зрители: прыгают и машут, когда ринг оживает
+      function drawCrowd() {
+        const t = NOW;
+        for (const c of crowd) {
+          const cheering = t < c.cheerUntil;
+          const bounce = cheering ? Math.abs(Math.sin(t / 80 + c.phase)) * 10 : Math.sin(t / 380 + c.phase) * 1.6;
+          const y = c.baseY - bounce;
+          const r = c.r;
+
+          // Плечи и тело
+          ctx.fillStyle = c.shirt;
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(c.x, y + r * 0.9, r * 1.25, r * 0.95, 0, Math.PI, 0);
+          ctx.fill();
+          ctx.stroke();
+
+          // Руки вверх при восторге
+          if (cheering) {
+            const wave = Math.sin(t / 60 + c.phase) * 4;
+            ctx.strokeStyle = OUT;
+            ctx.lineWidth = 5.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(c.x - r * 0.9, y + r * 0.2);
+            ctx.lineTo(c.x - r * 1.5, y - r * 1.5 + wave);
+            ctx.moveTo(c.x + r * 0.9, y + r * 0.2);
+            ctx.lineTo(c.x + r * 1.5, y - r * 1.5 - wave);
+            ctx.stroke();
+            ctx.strokeStyle = c.shirt;
+            ctx.lineWidth = 2.6;
+            ctx.stroke();
+          }
+
+          // Голова с волосами
+          ctx.fillStyle = c.skin;
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(c.x, y - r * 0.55, r * 0.62, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = c.hair;
+          ctx.beginPath();
+          ctx.arc(c.x, y - r * 0.55, r * 0.62, Math.PI * 1.05, Math.PI * 1.95);
+          ctx.fill();
+        }
+      }
+
+      function limb(x1, y1, x2, y2, w, color) {
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = OUT;
+        ctx.lineWidth = w + 5;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      function blob(x, y, r, fill) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = OUT;
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+      }
+
+      // Боксёрская перчатка: круглая, с белым бликом и манжетой
+      function glove(x, y, r, color) {
+        blob(x, y, r, color);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.beginPath();
+        ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(x - r * 0.55, y + r * 0.45, r * 1.1, r * 0.45);
+        ctx.strokeStyle = OUT;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - r * 0.55, y + r * 0.45, r * 1.1, r * 0.45);
+      }
+
+      function drawFace(f, hx, hy, dir) {
+        const ex = hx + dir * 3;
+        const dead = f.hp <= 0;
+        const hurt = f.stunTimer > 0 && !f.blocking;
+        const won = f.winPose || (state.phase === 'match_over' && f.hp > 0);
+        const blink = NOW % 3300 < 120;
+        const eyeY = hy - 2;
+        const eyes = [ex - 6, ex + 7];
+
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = OUT;
+        ctx.fillStyle = '#ffffff';
+
+        if (dead || hurt) {
+          // Крестики
+          ctx.lineWidth = 2.8;
+          for (const x of eyes) {
+            ctx.beginPath();
+            ctx.moveTo(x - 4, eyeY - 4); ctx.lineTo(x + 4, eyeY + 4);
+            ctx.moveTo(x + 4, eyeY - 4); ctx.lineTo(x - 4, eyeY + 4);
+            ctx.stroke();
+          }
+        } else if (won) {
+          // Весёлые дуги ^ ^
+          ctx.lineWidth = 2.8;
+          for (const x of eyes) {
+            ctx.beginPath();
+            ctx.arc(x, eyeY + 1, 4.5, Math.PI * 1.1, Math.PI * 1.9);
+            ctx.stroke();
+          }
+        } else if (f.blocking) {
+          ctx.lineWidth = 2.8;
+          for (const x of eyes) {
+            ctx.beginPath();
+            ctx.moveTo(x - 4, eyeY - 2); ctx.lineTo(x, eyeY); ctx.lineTo(x - 4, eyeY + 2);
+            ctx.stroke();
+          }
+        } else if (f.attack || blink) {
+          // Прищур (в ударе) или моргание
+          ctx.lineWidth = 2.8;
+          for (const x of eyes) {
+            ctx.beginPath();
+            ctx.moveTo(x - 4, eyeY - (f.attack ? 2.5 : 0));
+            ctx.lineTo(x + 4, eyeY + (f.attack ? 0 : 0));
+            ctx.stroke();
+          }
+          if (f.attack) {
+            // Брови-«уголки» злые
+            ctx.beginPath();
+            ctx.moveTo(eyes[0] - 4, eyeY - 6); ctx.lineTo(eyes[0] + 3, eyeY - 4);
+            ctx.moveTo(eyes[1] + 4, eyeY - 6); ctx.lineTo(eyes[1] - 3, eyeY - 4);
+            ctx.stroke();
+          }
+        } else {
+          // Большие мультяшные глаза с зрачками, смотрят по направлению боя
+          for (const x of eyes) {
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(x, eyeY, 6.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = OUT;
+            ctx.beginPath();
+            ctx.arc(x + dir * 2, eyeY + 0.5, 2.9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(x + dir * 2 - 1, eyeY - 1, 0.9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+          }
+        }
+
+        // Рот
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        if (dead || hurt) {
+          ctx.fillStyle = '#ffffff';
+          ctx.moveTo(hx + dir * 0, hy + 9);
+          ctx.quadraticCurveTo(hx + dir * 4, hy + 6, hx + dir * 8, hy + 9);
+          ctx.stroke();
+          ctx.fillStyle = '#7dd3fc';
+          ctx.beginPath();
+          ctx.ellipse(hx - dir * 16, hy - 6, 2.4, 3.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (f.attack) {
+          // Крик «А-а!»
+          ctx.fillStyle = '#3b0b0b';
+          ctx.beginPath();
+          ctx.ellipse(hx + dir * 4, hy + 8, 5, 4.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#f87171';
+          ctx.beginPath();
+          ctx.ellipse(hx + dir * 4, hy + 10, 2.6, 1.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (won) {
+          ctx.fillStyle = '#3b0b0b';
+          ctx.arc(hx + dir * 2, hy + 6, 6.5, 0.05 * Math.PI, 0.95 * Math.PI);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else if (f.blocking) {
+          ctx.moveTo(hx + dir * 1, hy + 9);
+          ctx.lineTo(hx + dir * 8, hy + 9);
+          ctx.stroke();
+        } else {
+          ctx.moveTo(hx + dir * 0, hy + 7);
+          ctx.quadraticCurveTo(hx + dir * 5, hy + 12, hx + dir * 10, hy + 6);
+          ctx.stroke();
+        }
+      }
+
+      function drawWheelchair(f, dir, hipY, shoulderY) {
+        const wx = -dir * 6;
+        const wy = -18;
+        const wr = 21;
+        // Рама
+        limb(-dir * 14, shoulderY + 8, -dir * 14, hipY + 6, 6, '#94a3b8');
+        limb(-dir * 14, hipY + 6, dir * 16, hipY + 6, 6, '#94a3b8');
+        limb(dir * 16, hipY + 6, dir * 24, -12, 6, '#94a3b8');
+        // Большое колесо: чёрный контур, спицы крутятся
+        blob(wx, wy, wr, 'rgba(15,23,42,0.35)');
+        ctx.strokeStyle = f.accentColor;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(wx, wy, wr - 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(wx, wy);
+        ctx.rotate(f.wheelAngle * dir);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+          const a = (i * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * (wr - 3), Math.sin(a) * (wr - 3));
+          ctx.lineTo(-Math.cos(a) * (wr - 3), -Math.sin(a) * (wr - 3));
+          ctx.stroke();
+        }
+        ctx.restore();
+        // Малое переднее колесо
+        blob(dir * 22, -6, 7, '#334155');
+      }
+
+      function drawFighter(f) {
+        const dir = f.facing;
+        const s = f.scale || 1;
+        const wc = f.wheelchair;
+        const isLoser = f.hp <= 0;
+        const idle = Math.sin(NOW / 170 + (f.id ? Math.PI : 0));
+        const bob = f.grounded ? Math.sin(f.walkCycle) * 2.5 : -2;
+
+        ctx.save();
+
+        // Тень
+        const heightOff = Math.max(0, FLOOR_Y - f.y);
+        const shadowScale = Math.max(0.35, 1 - heightOff / 260);
+        ctx.fillStyle = 'rgba(0,0,0,0.38)';
+        ctx.beginPath();
+        ctx.ellipse(f.x, FLOOR_Y + 4, 30 * shadowScale, 7 * shadowScale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.translate(f.x, f.y - 4);
+        ctx.scale(s, s);
+        ctx.rotate(f.hp <= 0 ? dir * 1.1 : f.stunTimer > 0 ? -dir * 0.22 : 0);
+
+        const hipY = (wc ? -30 : -50) + bob;
+        const shoulderY = (wc ? -60 : -84) + bob;
+        const hit = NOW - f.hitAt < 200;
+        const hx = (hit ? -dir * 6 : 0) + dir * 3;
+        const headY = shoulderY - 25;
+        const shoulderX = dir * 4;
+
+        // Ноги или коляска
+        if (wc) {
+          drawWheelchair(f, dir, hipY, shoulderY);
+        } else {
+          const stride = f.grounded && Math.abs(f.vx) > 20 ? Math.sin(f.walkCycle) * 16 : 0;
+          let fx = dir * 14 + stride;
+          let fy = 0;
+          let bx = -dir * 12 - stride;
+          let by = 0;
+          if (!f.grounded) { fx = dir * 18; fy = -12; bx = -dir * 10; by = -6; }
+          if (f.attack && f.attack.type === 'kick') {
+            const p = Math.sin(Math.min(1, f.attack.timer / f.attack.duration) * Math.PI);
+            fx = dir * (18 + 64 * p);
+            fy = -36 - 16 * p;
+          }
+          limb(0, hipY, bx, by, 11, f.primaryColor);
+          limb(0, hipY, fx, fy, 11, f.primaryColor);
+          // Ботинки
+          blob(bx + dir * 2, by, 6.5, f.accentColor);
+          blob(fx + dir * 3, fy, 7, f.accentColor);
+        }
+
+        // Трусы
+        ctx.fillStyle = f.trunks || '#2f6fd7';
+        ctx.strokeStyle = OUT;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-12, hipY - 7, 24, 18, 6);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-12, hipY - 3, 24, 3);
+
+        // Корпус: толстое туловище
+        limb(0, hipY - 2, shoulderX, shoulderY, 22, f.primaryColor);
+        // Пояс
+        ctx.strokeStyle = f.accentColor;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-10, hipY - 4);
+        ctx.lineTo(10, hipY - 4);
+        ctx.stroke();
+
+        // Руки и перчатки
+        let fhx = shoulderX + dir * 22;
+        let fhy = shoulderY + 14 + Math.cos(f.walkCycle) * 3;
+        let bhx = shoulderX + dir * 8;
+        let bhy = shoulderY + 20 - Math.cos(f.walkCycle) * 3;
+        if (f.blocking) {
+          fhx = shoulderX + dir * 18; fhy = shoulderY - 10;
+          bhx = shoulderX + dir * 12; bhy = shoulderY + 4;
+        } else if (f.attack && f.attack.type === 'punch') {
+          const p = Math.sin(Math.min(1, f.attack.timer / f.attack.duration) * Math.PI);
+          fhx = shoulderX + dir * (22 + 56 * p);
+          fhy = shoulderY + 2 - 4 * p;
+        } else if (f.attack && f.attack.type === 'kick' && wc) {
+          const p = Math.sin(Math.min(1, f.attack.timer / f.attack.duration) * Math.PI);
+          fhx = shoulderX + dir * (24 + 56 * p);
+          fhy = shoulderY + 4;
+          bhx = -dir * 7;
+          bhy = -28;
+        } else if (f.attack && f.attack.type === 'special') {
+          const p = Math.sin(Math.min(1, f.attack.timer / f.attack.duration) * Math.PI);
+          fhx = shoulderX + dir * (24 + 80 * p);
+          fhy = shoulderY - 4;
+          bhx = shoulderX - dir * 18;
+          bhy = shoulderY - 8;
+        }
+        limb(shoulderX, shoulderY, bhx, bhy, 10, f.primaryColor);
+        limb(shoulderX, shoulderY, fhx, fhy, 10, f.primaryColor);
+        glove(bhx, bhy, 11, f.accentColor);
+        glove(fhx, fhy, f.attack && f.attack.type === 'special' ? 15 : 12.5, f.accentColor);
+
+        // Костыль под рукой
+        if (f.style === 'crutch') {
+          const cx0 = -dir * 8;
+          const cy0 = shoulderY + 12;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.moveTo(cx0, cy0);
+          ctx.lineTo(cx0 - dir * 14, 2);
+          ctx.stroke();
+          ctx.strokeStyle = '#b45309';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(cx0, cy0);
+          ctx.lineTo(cx0 - dir * 14, 2);
+          ctx.stroke();
+          blob(cx0, cy0, 4.5, '#78350f');
+        }
+
+        // Бинты на торсе
+        if (f.style === 'mummy') {
+          for (const k of [0, 1, 2]) {
+            const yy = shoulderY + 8 + k * 9;
+            ctx.lineCap = 'butt';
+            ctx.strokeStyle = OUT;
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(-12, yy);
+            ctx.lineTo(12, yy + 2);
+            ctx.stroke();
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-12, yy);
+            ctx.lineTo(12, yy + 2);
+            ctx.stroke();
+          }
+        }
+
+        // Рога монстра (за головой)
+        if (f.style === 'monster') {
+          for (const side of [-1, 1]) {
+            ctx.fillStyle = '#e5e7eb';
+            ctx.strokeStyle = OUT;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(hx + side * 12, headY - 14);
+            ctx.lineTo(hx + side * 22, headY - 34);
+            ctx.lineTo(hx + side * 4, headY - 20);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // Голова
+        const headR = f.style === 'monster' ? 23 : 19;
+        blob(hx, headY, headR, f.primaryColor);
+        // Пятно-блик на голове
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.beginPath();
+        ctx.ellipse(hx - dir * 6, headY - 9, 5, 3, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Бинты на голове
+        if (f.style === 'mummy') {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(hx, headY, headR - 1, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.strokeStyle = '#f8fafc';
+          ctx.lineWidth = 4;
+          for (const k of [-12, -4, 4, 12]) {
+            ctx.beginPath();
+            ctx.moveTo(hx - 26, headY + k + 6);
+            ctx.lineTo(hx + 26, headY + k - 6);
+            ctx.stroke();
+          }
+          ctx.restore();
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(hx, headY, headR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        drawFace(f, hx, headY, dir);
+
+        // Клыки монстра
+        if (f.style === 'monster') {
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 2;
+          for (const k of [-6, 6]) {
+            ctx.beginPath();
+            ctx.moveTo(hx + dir * 2 + k, headY + 9);
+            ctx.lineTo(hx + dir * 2 + k + 2, headY + 15);
+            ctx.lineTo(hx + dir * 2 + k - 1, headY + 12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // Щит блока
+        if (f.blocking) {
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.arc(shoulderX + dir * 24, shoulderY + 4, 26, -Math.PI * 0.45, Math.PI * 0.45);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // Линии скорости у суперудара
+        if (f.attack && f.attack.type === 'special') {
+          ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+          ctx.lineWidth = 3;
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(-dir * (20 + i * 10), shoulderY - 14 + i * 14);
+            ctx.lineTo(-dir * (46 + i * 10), shoulderY - 14 + i * 14);
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      }
+
+      // Комикс-звёздочка на попадании
+      function drawBursts() {
+        for (const b of state.bursts) {
+          const age = (NOW - b.t0) / 260;
+          const r = (10 + age * 26) * (1 - age * 0.2);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, 1 - age);
+          ctx.beginPath();
+          for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2;
+            const rr = i % 2 === 0 ? r : r * 0.5;
+            const x = b.x + Math.cos(a) * rr;
+            const y = b.y + Math.sin(a) * rr;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = b.color;
+          ctx.fill();
+          ctx.strokeStyle = OUT;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function drawParticles() {
+        for (const p of state.particles) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawPopups() {
+        for (const pop of state.popups) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, pop.life / pop.maxLife);
+          ctx.font = '900 20px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.lineJoin = 'round';
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = OUT;
+          ctx.strokeText(pop.text, pop.x, pop.y);
+          ctx.fillStyle = pop.color;
+          ctx.fillText(pop.text, pop.x, pop.y);
+          ctx.restore();
+        }
+      }
+
+      function render() {
+        resizeCanvas();
+        // Равномерный масштаб без растяжения: иначе на повороте бойцы становятся «бочками»
+        const s = Math.min(canvas.width / LOGIC_W, canvas.height / LOGIC_H);
+        const ox = (canvas.width - LOGIC_W * s) / 2;
+        const oy = (canvas.height - LOGIC_H * s) / 2;
+        ctx.fillStyle = '#080b12';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+        if (state.shakeTime > 0) {
+          ctx.translate((Math.random() - 0.5) * state.shakePower * 2, (Math.random() - 0.5) * state.shakePower * 2);
+        }
+
+        drawArena();
+
+        for (const sw of state.shockwaves) {
+          ctx.save();
+          ctx.strokeStyle = sw.color;
+          ctx.globalAlpha = Math.max(0, sw.alpha);
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        drawFighter(fighters[1]);
+        drawFighter(fighters[0]);
+        drawBursts();
+        drawParticles();
+        drawPopups();
+        ctx.restore();
+      }
+
+      // ==========================================
+      // 7. УПРАВЛЕНИЕ И ЗАПУСК
+      // ==========================================
+      function mapKey(code) {
+        switch (code) {
+          case 'KeyA': return { idx: 0, action: 'left', hold: true };
+          case 'KeyD': return { idx: 0, action: 'right', hold: true };
+          case 'KeyW': return { idx: 0, action: 'jump', hold: false };
+          case 'KeyS': return { idx: 0, action: 'block', hold: true };
+          case 'KeyQ': return { idx: 0, action: 'dash', hold: false };
+          case 'KeyF': return { idx: 0, action: 'punch', hold: false };
+          case 'KeyG': return { idx: 0, action: 'kick', hold: false };
+          case 'KeyR': return { idx: 0, action: 'special', hold: false };
+          case 'ArrowLeft': return { idx: 1, action: 'left', hold: true };
+          case 'ArrowRight': return { idx: 1, action: 'right', hold: true };
+          case 'ArrowUp': return { idx: 1, action: 'jump', hold: false };
+          case 'ArrowDown': return { idx: 1, action: 'block', hold: true };
+          case 'ShiftRight':
+          case 'ShiftLeft': return { idx: 1, action: 'dash', hold: false };
+          case 'KeyK': return { idx: 1, action: 'punch', hold: false };
+          case 'KeyL': return { idx: 1, action: 'kick', hold: false };
+          case 'Slash': return { idx: 1, action: 'special', hold: false };
+          default: return null;
+        }
+      }
+
+      window.addEventListener('keydown', (e) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+        sound.ensure();
+        const m = mapKey(e.code);
+        if (!m) return;
+        if (m.idx === 1 && state.mode === 'ai') return;
+        const f = fighters[m.idx];
+        if (m.hold) {
+          f.controls[m.action] = true;
+        } else if (!e.repeat) {
+          if (m.action === 'jump') triggerJump(f);
+          if (m.action === 'dash') triggerDash(f);
+          if (m.action === 'punch') triggerAttack(f, 'punch');
+          if (m.action === 'kick') triggerAttack(f, 'kick');
+          if (m.action === 'special') triggerAttack(f, 'special');
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        const m = mapKey(e.code);
+        if (!m || !m.hold) return;
+        fighters[m.idx].controls[m.action] = false;
+      });
+
+      window.addEventListener('blur', () => {
+        fighters.forEach((f) => Object.keys(f.controls).forEach((k) => { f.controls[k] = false; }));
+      });
+
+      // Касания: тап по сцене бьёт первым бойцом (не даёт выделять текст)
+      function bindPad(selector, idx) {
+        const holds = new Set(['left', 'right', 'block']);
+        document.querySelectorAll(selector).forEach((btn) => {
+          const action = btn.getAttribute(idx === 0 ? 'data-p1' : 'data-p2');
+          if (!action) return;
+
+          const down = (e) => {
+            e.preventDefault();
+            if (idx === 1 && state.mode === 'ai') return;
+            sound.ensure();
+            btn.classList.add('is-pressed');
+            const f = fighters[idx];
+            if (holds.has(action)) f.controls[action] = true;
+            else if (action === 'jump') triggerJump(f);
+            else if (action === 'dash') triggerDash(f);
+            else if (action === 'punch') triggerAttack(f, 'punch');
+            else if (action === 'kick') triggerAttack(f, 'kick');
+            else if (action === 'special') triggerAttack(f, 'special');
+          };
+          const up = () => {
+            btn.classList.remove('is-pressed');
+            if (holds.has(action)) fighters[idx].controls[action] = false;
+          };
+
+          btn.addEventListener('pointerdown', down);
+          btn.addEventListener('pointerup', up);
+          btn.addEventListener('pointerleave', up);
+          btn.addEventListener('pointercancel', up);
+        });
+      }
+
+      bindPad('[data-p1]', 0);
+      bindPad('[data-p2]', 1);
+
+      document.getElementById('switchP1Btn').addEventListener('click', switchPlayerFighter);
+
+      document.getElementById('modeAiBtn').addEventListener('click', () => {
+        sound.ensure();
+        state.mode = 'ai';
+        applyModeUi();
+        startNewMatch();
+      });
+
+      document.getElementById('mode2pBtn').addEventListener('click', () => {
+        sound.ensure();
+        state.mode = '2p';
+        applyModeUi();
+        startNewMatch();
+      });
+
+      document.getElementById('difficultySelect').addEventListener('change', (e) => {
+        state.difficulty = e.target.value;
+        applyModeUi();
+      });
+
+      document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+        else document.exitFullscreen().catch(() => {});
+      });
+
+      document.getElementById('soundBtn').addEventListener('click', () => {
+        const on = sound.toggle();
+        document.getElementById('soundIcon').textContent = on ? '🔊' : '🔇';
+        document.getElementById('soundLabel').textContent = on ? 'Звук' : 'Тихо';
+      });
+
+      document.getElementById('restartBtn').addEventListener('click', () => {
+        sound.ensure();
+        startNewMatch();
+      });
+
+      document.getElementById('playAgainBtn').addEventListener('click', () => {
+        sound.ensure();
+        startNewMatch();
+      });
+
+      window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('orientationchange', () => {
+        setTimeout(resizeCanvas, 150);
+        setTimeout(resizeCanvas, 500);
+      });
+      if (window.screen && screen.orientation) {
+        screen.orientation.addEventListener('change', () => setTimeout(resizeCanvas, 200));
+      }
+
+      let lastTs = performance.now();
+      function loop(now) {
+        NOW = now;
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
+        lastTs = now;
+        stepSimulation(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      applyModeUi();
+      startRound(1, false);
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
